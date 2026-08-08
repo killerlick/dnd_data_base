@@ -48,3 +48,6 @@ create table character_spells (
     spell_id INTEGER REFERENCES spells(id),
     PRIMARY KEY (character_id, spell_id)
 );
+
+insert into races (name,description) values 
+('Human','Humans are the most adaptable and ambitious people among the common races.');
