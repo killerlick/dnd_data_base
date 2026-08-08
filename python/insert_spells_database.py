@@ -3,6 +3,7 @@ import psycopg
 
 with open("spell_list.json", "r") as f:
     spells = json.load(f)
+    print("ok")
 
 conn = psycopg.connect(
     host="postgres",
