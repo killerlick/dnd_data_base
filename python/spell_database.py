@@ -1,74 +1,139 @@
 import requests as req
 import bs4 as bs
 import json
-from itertools import islice
-
-index = 0
-base_url : str= "https://dnd5e.wikidot.com"
 
 
+BASE_URL: str = "https://dnd5e.wikidot.com"
 
-r = req.get(base_url + "/spells")
-soup = bs.BeautifulSoup(r.text, "html.parser")
-spell_list = soup.find_all("a", href=lambda x: x and "spell:" in x)
-spell_list_json = []
+#permet d'avoir TOUT le html du site
+def get_soup(url):
+    response = req.get(url)
+    response.raise_for_status()
+    return bs.BeautifulSoup(response.text, "html.parser")
 
-def write_spell_page(href):
-    with open("output.html", "w") as f:
-        r_spell = req.get(base_url + href)
-        f.write(r_spell.text)
+#return tableau des balise a href des sorts
+def get_spell_list_hrefs():
+    soup = get_soup(BASE_URL + "/spells")
 
-for spell in spell_list:
-    try:
-        r_spell = req.get(base_url + spell['href'])
-        soup_spell = bs.BeautifulSoup(r_spell.text, "html.parser")
+    return soup.find_all(
+        "a",
+        href=lambda x: x and "spell:" in x
+    )
 
-        spell_name = soup_spell.find_all("div", class_="page-title")[0].text
-        spell_source = soup_spell.find_all("p", string = lambda text:text and text.startswith("Source:"))[0].text.replace("Source: ", "")
-        spell_type = soup_spell.select_one("p em").text
 
-        t = soup_spell.select_one("p strong").parent.text.split("\n")
-        #print(t)
-        if len(t) < 4:
-            t= soup_spell.select("p strong")
-            spell_casting_time = t[0].parent.text.replace("Casting Time: ", "")
-            spell_range = t[1].parent.text.replace("Range: ", "")
-            spell_components = t[2].parent.text.replace("Components: ", "")
-            spell_duration = t[3].parent.text.replace("Duration: ", "")
-        else:
-            spell_casting_time = t[0].replace("Casting Time: ", "")
-            spell_range = t[1].replace("Range: ", "")
-            spell_components = t[2].replace("Components: ", "")
-            spell_duration = t[3].replace("Duration: ", "")
-        #print(soup_spell.find("div", id="page-content").text.split("<p>")[0].split("\n")[8]  )
-        #todo ajouter un truc pour récupérer la description du sort, car actuellement ça ne fonctionne pas(array precise de la description du sort)
-        spell_description = soup_spell.find("div", id="page-content").text.split("<p>")[0].split("\n")[8]
+#return un dictionnaire avec les infos du sort
+def get_spell_data(href):
+    soup = get_soup(BASE_URL + href)
 
-        spell_url = r_spell.url
-        spell_list_json.append(
-        {
-            'name': spell_name,
-            'url': spell_url,
-            'source': spell_source,
-            'type': spell_type,
-            'casting_time': spell_casting_time,
-            'range': spell_range,
-            'components': spell_components,
-            'duration': spell_duration,
-            'description': spell_description
-        }
+    spell_name = soup.find(
+        "div",
+        class_="page-title"
+    ).text.strip()
+
+    spell_source = soup.find(
+        "p",
+        string=lambda text: text and text.startswith("Source:")
+    ).text.replace("Source: ", "").strip()
+
+    spell_type = soup.select_one("p em").text.strip()
+
+    t = soup.select_one("p strong").parent.text.split("\n")
+
+    if len(t) < 4:
+        t = soup.select("p strong")
+
+        spell_casting_time = t[0].parent.text.replace(
+            "Casting Time: ", ""
+        ).strip()
+
+        spell_range = t[1].parent.text.replace(
+            "Range: ", ""
+        ).strip()
+
+        spell_components = t[2].parent.text.replace(
+            "Components: ", ""
+        ).strip()
+
+        spell_duration = t[3].parent.text.replace(
+            "Duration: ", ""
+        ).strip()
+
+    else:
+        spell_casting_time = t[0].replace(
+            "Casting Time: ", ""
+        ).strip()
+
+        spell_range = t[1].replace(
+            "Range: ", ""
+        ).strip()
+
+        spell_components = t[2].replace(
+            "Components: ", ""
+        ).strip()
+
+        spell_duration = t[3].replace(
+            "Duration: ", ""
+        ).strip()
+
+    spell_description = (
+        soup
+        .find("div", id="page-content")
+        .text
+        .split("<p>")[0]
+        .split("\n")[8]
+    )
+
+    return {
+        "name": spell_name,
+        "url": BASE_URL + href,
+        "source": spell_source,
+        "type": spell_type,
+        "casting_time": spell_casting_time,
+        "range": spell_range,
+        "components": spell_components,
+        "duration": spell_duration,
+        "description": spell_description
+    }
+
+
+#return un tableau de dictionnaire avec les infos de tous les sorts
+def scrape_spells():
+    spell_list_json = []
+
+    spell_list = get_spell_list_hrefs()
+
+    for index, spell in enumerate(spell_list):
+        try:
+            spell_data = get_spell_data(spell["href"])
+            spell_list_json.append(spell_data)
+
+        except Exception as e:
+            print(
+                f"Error processing spell {spell['href']}: {e}"
+            )
+            print(f"Index: {index}")
+
+            break
+
+    return spell_list_json
+
+#sauvegarde le tableau de dictionnaire (spells) dans un fichier json
+def save_spells(spells, filename="spell_list.json"):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(
+            spells,
+            f,
+            indent=3,
+            ensure_ascii=False
         )
-    except Exception as e:
-        print(f"Error processing spell {spell['href']}: {e}")
-        #write_spell_page(spell['href'])
-        print(spell['href'])
-        print(index)
-        break
 
-    #if index == 150:
-    #    break
-    index += 1
 
-with open("spell_list.json", "w") as f:
-    json.dump(spell_list_json, f,indent=3)
+def main():
+    spells = scrape_spells()
+    save_spells(spells)
 
+    print(f"{len(spells)} spells saved.")
+
+
+if __name__ == "__main__":
+    main()
